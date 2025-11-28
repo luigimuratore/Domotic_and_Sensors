@@ -1,4 +1,4 @@
-# DOMOTIC % SENSORS
+# DOMOTIC & SENSORS
 
 ## Arduino & ESP8266
 ## ESPHome & HomeAssistant
