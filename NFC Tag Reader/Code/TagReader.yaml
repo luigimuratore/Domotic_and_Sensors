@@ -1,0 +1,73 @@
+esphome:
+  name: tagreader
+  friendly_name: TagReader
+
+esp8266:
+  board: d1_mini
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "LDMKGB7WASnNMGDJuT5uoiXYqXB8BVBbZmvXBTI6G6Y="
+
+ota:
+  - platform: esphome
+    password: "67fe52695c0d2d699e6bf9e021919311"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Tagreader Fallback Hotspot"
+    password: "Mg1HW9buQ9fq"
+
+captive_portal:
+
+# ---------- I2C + PN532 ----------
+i2c:
+  sda: D2          # PN532 SDA
+  scl: D1          # PN532 SCL
+  scan: true
+  frequency: 400kHz
+
+pn532_i2c:
+  id: pn532_board
+  update_interval: 500ms
+
+  on_tag:
+    then:
+      - lambda: |-
+          ESP_LOGD("pn532", "Tag scanned! UID: %s", x.c_str());
+      # Turn LED ON
+      - light.turn_on:
+          id: activity_led
+      - delay: 3000ms
+      # Turn LED OFF
+      - light.turn_off:
+          id: activity_led
+      # Tell Home Assistant that this tag (UID) was scanned
+      - homeassistant.tag_scanned: !lambda 'return x;'
+
+  on_tag_removed:
+    then:
+      - lambda: |-
+          ESP_LOGD("pn532", "Tag removed!");
+
+# ---------- Single green LED on D5 ----------
+output:
+  - platform: gpio
+    id: green_led_output
+    pin: D5        # LED anode via 220 Ω, cathode to GND
+    inverted: false
+
+light:
+  - platform: binary
+    id: activity_led
+    name: "TagReader LED"
+    output: green_led_output
