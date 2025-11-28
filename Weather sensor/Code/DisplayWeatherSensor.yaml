@@ -1,0 +1,133 @@
+esphome:
+  name: meteo
+  friendly_name: Meteo
+
+esp8266:
+  board: d1_mini
+
+logger:
+  baud_rate: 0
+
+api:
+  encryption:
+    key: "LA2hULTT4BNPCANqIIlLJayrGbF7ySzIYc2BGuLTUyg="
+
+ota:
+  - platform: esphome
+    password: "17f4567a3299e662c0bc1561547236e4"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  min_auth_mode: WPA2
+  ap:
+    ssid: "Meteo Fallback Hotspot"
+    password: "risF9fYFGoI5"
+
+captive_portal:
+
+# -------- GLOBALS --------
+globals:
+  - id: display_page
+    type: int
+    restore_value: yes
+    initial_value: '0'
+  - id: display_on
+    type: bool
+    restore_value: yes
+    initial_value: 'true'   # backlight ON at boot
+
+# -------- BACKLIGHT OUTPUT --------
+output:
+  - platform: gpio
+    pin: D8
+    id: lcd_backlight
+
+# -------- I2C BUS (BME280) --------
+i2c:
+  sda: D2
+  scl: D1
+  scan: true
+
+sensor:
+  - platform: bme280_i2c
+    temperature:
+      name: "Meteo Temperature"
+      id: meteo_temp
+    humidity:
+      name: "Meteo Humidity"
+      id: meteo_hum
+    pressure:
+      name: "Meteo Pressure"
+      id: meteo_press
+    address: 0x76
+    update_interval: 30s
+
+  - platform: wifi_signal
+    name: "Meteo WiFi Signal"
+    id: wifi_rssi
+    update_interval: 30s
+
+# -------- BUTTON ON RX --------
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: RX
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "Meteo LCD Button"
+    on_click:
+      - min_length: 80ms
+        max_length: 500ms
+        then:
+          - lambda: |-
+              if (!id(display_on)) {
+                // OFF -> turn ON page 0
+                id(display_on) = true;
+                id(display_page) = 0;
+                id(lcd_backlight).turn_on();
+              } else {
+                // cycle pages
+                id(display_page)++;
+                if (id(display_page) > 2) {
+                  // last click -> turn OFF
+                  id(display_on) = false;
+                  id(lcd_backlight).turn_off();
+                }
+              }
+
+# -------- LCD PARALLEL DISPLAY --------
+display:
+  - platform: lcd_gpio
+    dimensions: 16x2
+
+    rs_pin: D6
+    enable_pin: D7
+
+    data_pins:
+      - D3   # LCD D4
+      - D4   # LCD D5
+      - D5   # LCD D6
+      - D0   # LCD D7
+
+    lambda: |-
+      if (!id(display_on)) {
+        return;
+      }
+
+      if (id(display_page) == 0) {
+        it.printf(0, 0, "T: %.1f C", id(meteo_temp).state);
+        it.printf(0, 1, "H: %.1f %%", id(meteo_hum).state);
+
+      } else if (id(display_page) == 1) {
+        it.printf(0, 0, "P: %.1f hPa", id(meteo_press).state);
+        it.printf(0, 1, "WiFi: %.0f dBm", id(wifi_rssi).state);
+
+      } else if (id(display_page) == 2) {
+        float t = id(meteo_temp).state;
+        float h = id(meteo_hum).state;
+        if (h < 50 && t > 22) it.printf(0, 0, "Pleasant Wx");
+        else if (h > 70) it.printf(0, 0, "Humid Air");
+        else it.printf(0, 0, "Stable");
+        it.printf(0, 1, "T:%.1fC H:%.1f%%", t, h);
+      }
